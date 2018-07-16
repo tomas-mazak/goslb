@@ -5,7 +5,7 @@ import (
 )
 
 func DnsServer(config *Config) {
-	dns.HandleFunc(Domain, handleGSLB)
+	dns.HandleFunc(config.Domain, handleGSLB)
 
 	Log.Infof("Starting DNS server on %v", config.BindAddrDNS)
 	server := &dns.Server{Addr: config.BindAddrDNS, Net: "udp"}

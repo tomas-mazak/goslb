@@ -53,6 +53,7 @@ func addService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	Etcd.SaveService(service)
 	Services[service.Domain] = service
 	for i := range service.Endpoints {
 		service.Endpoints[i].MonitorInstance = &TcpMonitor{ monitor: &service.Monitor, endpoint: &service.Endpoints[i]}

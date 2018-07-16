@@ -25,14 +25,8 @@ var rootCmd = &cobra.Command{
 		// read configuration
 		config := readConfig()
 
-		// setup logging
-		goslb.InitLogger(config)
-
-		// start API
-		go goslb.ApiServer(config)
-
-		// start DNS server
-		goslb.DnsServer(config)
+		// start the server
+		goslb.StartServer(config)
 	},
 }
 
@@ -45,15 +39,19 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Path to config file")
-	rootCmd.PersistentFlags().StringP("log-level", "", "INFO", "Log verbosity level")
-	rootCmd.PersistentFlags().StringP("bind-addr-api", "", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortAPI),
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Path to config file")
+	rootCmd.PersistentFlags().StringP("log-level", "l", "INFO", "Log verbosity level")
+	rootCmd.PersistentFlags().String("bind-addr-api", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortAPI),
 		"API bind address")
-	rootCmd.PersistentFlags().StringP("bind-addr-dns", "", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortDNS),
+	rootCmd.PersistentFlags().String("bind-addr-dns", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortDNS),
 		"DNS server bind address")
+	rootCmd.PersistentFlags().StringSlice("etcd-servers", []string{}, "List of etcd servers to connect to")
+	rootCmd.PersistentFlags().StringP("domain", "d", "goslb.", "DNS domain of the GSLB records")
 	viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
 	viper.BindPFlag("bind_addr_api", rootCmd.PersistentFlags().Lookup("bind-addr-api"))
 	viper.BindPFlag("bind_addr_dns", rootCmd.PersistentFlags().Lookup("bind-addr-dns"))
+	viper.BindPFlag("etcd_servers", rootCmd.PersistentFlags().Lookup("etcd-servers"))
+	viper.BindPFlag("domain", rootCmd.PersistentFlags().Lookup("domain"))
 }
 
 func initConfig() {
@@ -78,5 +76,7 @@ func readConfig() *goslb.Config {
 		LogLevel: viper.GetString("log_level"),
 		BindAddrAPI: viper.GetString("bind_addr_api"),
 		BindAddrDNS: viper.GetString("bind_addr_dns"),
+		EtcdServers: viper.GetStringSlice("etcd_servers"),
+		Domain: viper.GetString("domain"),
 	}
 }

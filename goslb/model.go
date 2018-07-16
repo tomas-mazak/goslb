@@ -29,6 +29,4 @@ type Service struct {
 	Monitor   Monitor
 }
 
-const Domain = "goslb."
-
 var Services = make(map[string]Service)
