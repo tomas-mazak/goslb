@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-var Log = logrus.NewEntry(logrus.New())
+var log = logrus.NewEntry(logrus.New())
 
 // InitLogger creates the logger instance
 func InitLogger(config *Config) {
@@ -23,5 +23,5 @@ func InitLogger(config *Config) {
 	}
 
 	formattedLogger.Level = level
-	Log = logrus.NewEntry(formattedLogger).WithField("node", node)
+	log = logrus.NewEntry(formattedLogger).WithField("node", node)
 }

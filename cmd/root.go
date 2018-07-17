@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"github.com/tomas-mazak/goslb/goslb"
+	"log"
 )
 
 const (
@@ -40,7 +41,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Path to config file")
-	rootCmd.PersistentFlags().StringP("log-level", "l", "INFO", "Log verbosity level")
+	rootCmd.PersistentFlags().StringP("log-level", "l", "INFO", "log verbosity level")
 	rootCmd.PersistentFlags().String("bind-addr-api", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortAPI),
 		"API bind address")
 	rootCmd.PersistentFlags().String("bind-addr-dns", fmt.Sprintf("0.0.0.0:%d", DefaultBindPortDNS),
@@ -67,7 +68,7 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		goslb.Log.Println("Can't read config, using defaults:", err)
+		log.Println("Can't read config, using defaults:", err)
 	}
 }
 
@@ -78,5 +79,6 @@ func readConfig() *goslb.Config {
 		BindAddrDNS: viper.GetString("bind_addr_dns"),
 		EtcdServers: viper.GetStringSlice("etcd_servers"),
 		Domain: viper.GetString("domain"),
+		SiteMap: viper.GetStringMapStringSlice("site_map"),
 	}
 }

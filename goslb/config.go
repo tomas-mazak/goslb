@@ -6,4 +6,5 @@ type Config struct {
 	BindAddrDNS string
 	EtcdServers []string
 	Domain string
+	SiteMap map[string][]string
 }
