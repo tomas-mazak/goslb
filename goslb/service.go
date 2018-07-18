@@ -75,6 +75,7 @@ type Endpoint struct {
 	Site            string
 	Healthy         bool
 	monitorInstance MonitorType
+	lastCheck		time.Time
 }
 
 type Monitor struct {
@@ -104,7 +105,7 @@ func (sd *ServiceDomain) Add(s *Service) error {
 	etcdClient.SaveService(s)
 	sd.services[s.Domain] = s
 	for i := range s.Endpoints {
-		s.Endpoints[i].monitorInstance = &TcpMonitor{ monitor: &s.Monitor, endpoint: &s.Endpoints[i]}
+		s.Endpoints[i].monitorInstance = NewMonitorInstance(&s.Monitor, &s.Endpoints[i])
 		go s.Endpoints[i].monitorInstance.start()
 	}
 	return nil

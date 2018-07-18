@@ -7,7 +7,6 @@ Work in progress...
 TODO
 ----
 
-  * HTTP health probes
   * edit API (so far just add/delete)
   * ETCD multi-node synchronization
   * tests
