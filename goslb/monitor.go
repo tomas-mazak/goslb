@@ -5,8 +5,8 @@ import (
 	"time"
 	"fmt"
 	"net/http"
-	"strings"
 )
+
 
 type MonitorType interface {
 	start()
@@ -26,20 +26,21 @@ func (m *TcpMonitor) start() {
 
 	log.Infof("Starting %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 	for {
+		conn, err := net.DialTimeout("tcp", addrStr, m.monitor.Timeout * time.Second)
+		if err == nil {
+			m.endpoint.setHealth(true, nil)
+			conn.Close()
+		} else {
+			m.endpoint.setHealth(false, err)
+		}
+
 		select {
 		case <-m.stopped:
 			log.Infof("Stopping %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 			return
-		default:
+		case <-time.After(m.monitor.Interval * time.Second):
+			break
 		}
-		conn, err := net.DialTimeout("tcp", addrStr, m.monitor.Timeout * time.Second)
-		if err == nil {
-			healthy(m.endpoint, true, nil)
-			conn.Close()
-		} else {
-			healthy(m.endpoint, false, err)
-		}
-		time.Sleep(m.monitor.Interval * time.Second)
 	}
 }
 
@@ -61,29 +62,30 @@ func (m *HttpMonitor) start() {
 
 	log.Infof("Starting %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 	for {
+		resp, err := client.Get(url)
+		if err != nil {
+			m.endpoint.setHealth(false, err)
+		} else {
+			success := false
+			for _, v := range m.monitor.SuccessCodes {
+				if resp.StatusCode == v {
+					success = true
+					m.endpoint.setHealth(true, nil)
+					break
+				}
+			}
+			if !success {
+				m.endpoint.setHealth(false, nil)
+			}
+		}
+
 		select {
 		case <-m.stopped:
 			log.Infof("Stopping %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 			return
-		default:
+		case <-time.After(m.monitor.Interval * time.Second):
+			break
 		}
-		resp, err := client.Get(url)
-		if err != nil {
-			healthy(m.endpoint, false, err)
-			continue
-		}
-		success := false
-		for _, v := range m.monitor.SuccessCodes {
-			if resp.StatusCode == v {
-				success = true
-				healthy(m.endpoint, true, nil)
-				break
-			}
-		}
-		if !success {
-			healthy(m.endpoint, false, nil)
-		}
-		time.Sleep(m.monitor.Interval * time.Second)
 	}
 }
 
@@ -91,25 +93,3 @@ func (m *HttpMonitor) stop() {
 	m.stopped <- true
 }
 
-func healthy(ep *Endpoint, healthy bool, err error) {
-	if ep.Healthy != healthy || ep.lastCheck.IsZero() {
-		if healthy {
-			log.Infof("Endpoint %v healthy", ep.IP)
-		} else {
-			log.WithError(err).Warningf("Endpoint %v unhealthy", ep.IP)
-		}
-	}
-	ep.Healthy = healthy
-	ep.lastCheck = time.Now()
-}
-
-func NewMonitorInstance(m *Monitor, ep *Endpoint) MonitorType {
-	switch strings.ToUpper(m.Type) {
-	case "TCP":
-		return &TcpMonitor{monitor: m, endpoint: ep}
-	case "HTTP":
-		return &HttpMonitor{monitor: m, endpoint: ep}
-	default:
-		return nil
-	}
-}

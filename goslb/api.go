@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"text/tabwriter"
 	"net"
+	"github.com/gorilla/handlers"
+	"os"
 )
 
 type ApiStatus struct {
@@ -14,21 +16,67 @@ type ApiStatus struct {
 	 Msg string `json:",omitempty"`
 }
 
-func getServices(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(serviceDomain.services)
+type ServiceAPI struct {}
+
+func (api *ServiceAPI) list(w http.ResponseWriter, r *http.Request) {
+	ret := make([]string, len(serviceDomain.services))[:0]
+	for k, _ := range serviceDomain.services {
+		ret = append(ret, k)
+	}
+	json.NewEncoder(w).Encode(ret)
 }
 
-func getService(w http.ResponseWriter, r *http.Request) {
+func (api *ServiceAPI) get(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
 	if service, found := serviceDomain.services[name]; found {
 		json.NewEncoder(w).Encode(service)
 	} else {
 		http.Error(w, "", http.StatusNotFound)
-		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found"})
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 	}
 }
 
-func addService(w http.ResponseWriter, r *http.Request) {
+func (api *ServiceAPI) set(w http.ResponseWriter, r *http.Request) {
+	name := mux.Vars(r)["name"]
+
+	service := &Service{}
+	if err := json.NewDecoder(r.Body).Decode(&service); err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+		return
+	}
+
+	if service.Domain != "" && service.Domain != name {
+		http.Error(w, "", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "URI and JSON names don't match"})
+		return
+	}
+	service.Domain = name
+
+	if err := serviceDomain.IsValid(service); err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+		return
+	}
+
+	if !serviceDomain.Exists(service.Domain) {
+		if err := serviceDomain.Add(service); err != nil {
+			http.Error(w, "", http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+			return
+		}
+	} else {
+		if err := serviceDomain.Update(service); err != nil {
+			http.Error(w, "", http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+			return
+		}
+	}
+
+	json.NewEncoder(w).Encode(ApiStatus{Success: true})
+}
+
+func (api *ServiceAPI) add(w http.ResponseWriter, r *http.Request) {
 	service := &Service{}
 
 	if err := json.NewDecoder(r.Body).Decode(&service); err != nil {
@@ -38,23 +86,31 @@ func addService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if serviceDomain.Exists(service.Domain) {
+		http.Error(w, "", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service already exists: " + service.Domain})
+		return
+	}
+	if err := serviceDomain.IsValid(service); err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
 	if err := serviceDomain.Add(service); err != nil {
 		http.Error(w, "", http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+		return
 	}
 
 	json.NewEncoder(w).Encode(ApiStatus{Success: true})
 }
 
-func deleteService(w http.ResponseWriter, r *http.Request) {
+func (api *ServiceAPI) delete(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
 
 	if ! serviceDomain.Exists(name) {
 		http.Error(w, "", http.StatusNotFound)
-		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found"})
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
 
@@ -66,21 +122,23 @@ func deleteService(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ApiStatus{Success: true})
 }
 
-func getEndpoints(w http.ResponseWriter, r *http.Request) {
-	serviceName := mux.Vars(r)["servicename"]
+func (api *ServiceAPI) dnsResponse(w http.ResponseWriter, r *http.Request) {
+	name := mux.Vars(r)["name"]
 	ipstr, _, _ := net.SplitHostPort(r.RemoteAddr)
 	ip := net.ParseIP(ipstr)
 
-	if ! serviceDomain.Exists(serviceName) {
+	if ! serviceDomain.Exists(name) {
 		http.Error(w, "", http.StatusNotFound)
-		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found"})
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
 
-	json.NewEncoder(w).Encode(serviceDomain.Get(serviceName).GetOrdered(ip))
+	json.NewEncoder(w).Encode(serviceDomain.Get(name).GetOrdered(ip))
 }
 
-type CatAPI struct {}
+type CatAPI struct {
+	routes string
+}
 
 func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := mux.Vars(r)["servicename"]
@@ -110,22 +168,27 @@ func (api *CatAPI) getClientSite(w http.ResponseWriter, r *http.Request) {
 }
 
 func InitApiServer(config *Config) {
-	catApi := &CatAPI{}
-
     router := mux.NewRouter()
-	router.HandleFunc("/services", getServices).Methods("GET")
-	router.HandleFunc("/services", addService).Methods("POST")
-	router.HandleFunc("/services/{name}", getService).Methods("GET")
-	//router.HandleFunc("/services/{name}", applyService).Methods("PUT")
-	router.HandleFunc("/services/{name}", deleteService).Methods("DELETE")
-    router.HandleFunc("/endpoints/{servicename}", getEndpoints).Methods("GET")
-	router.HandleFunc("/_cat/endpoints/{servicename}", catApi.getEndpoints).Methods("GET")
-	router.HandleFunc("/_cat/clientsite", catApi.getClientSite).Methods("GET")
-    log.Infof("Starting API on %v", config.BindAddrAPI)
+	router.StrictSlash(true) // this actually means endpoints both with and without trailing slash will work
 
-    if err := http.ListenAndServe(config.BindAddrAPI, router); err != nil {
+    serviceRouter := router.PathPrefix("/services").Subrouter()
+    serviceApi := &ServiceAPI{}
+	serviceRouter.HandleFunc("/", serviceApi.list).Methods("GET")
+	serviceRouter.HandleFunc("/", serviceApi.add).Methods("POST")
+	serviceRouter.HandleFunc("/{name}", serviceApi.get).Methods("GET")
+	serviceRouter.HandleFunc("/{name}", serviceApi.set).Methods("PUT")
+	serviceRouter.HandleFunc("/{name}", serviceApi.delete).Methods("DELETE")
+    serviceRouter.HandleFunc("/{name}/dnsresponse", serviceApi.dnsResponse).Methods("GET")
+
+	catRouter := router.PathPrefix("/_cat").Subrouter()
+	catApi := &CatAPI{}
+	catRouter.HandleFunc("/endpoints/{servicename}", catApi.getEndpoints).Methods("GET")
+	catRouter.HandleFunc("/clientsite", catApi.getClientSite).Methods("GET")
+
+	loggedRouter := handlers.LoggingHandler(os.Stdout, router)
+
+    log.Infof("Starting API on %v", config.BindAddrAPI)
+    if err := http.ListenAndServe(config.BindAddrAPI, loggedRouter); err != nil {
 		log.WithError(err).Fatal("Failed to start API")
 	}
 }
-
-

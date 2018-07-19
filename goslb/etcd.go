@@ -15,7 +15,6 @@ var (
 
 type EtcdClient struct {
 	cli *clientv3.Client
-	ctx context.Context
 	kv clientv3.KV
 }
 
@@ -24,7 +23,7 @@ func (c *EtcdClient) Close() {
 }
 
 func (c *EtcdClient) ListServices() ([][]byte, error) {
-	gr, err := etcdClient.kv.Get(c.ctx, "/services/", clientv3.WithPrefix())
+	gr, err := etcdClient.kv.Get(c.context(), "/services/", clientv3.WithPrefix())
 	if err != nil {
 		log.WithError(err).Error("Failed to list services in etcd")
 		return nil, err
@@ -42,7 +41,7 @@ func (c *EtcdClient) SaveService(service *Service) error {
 		log.WithError(err).Error("Failed to serialize service object", service.Domain)
 		return err
 	}
-	ret, err := c.kv.Put(c.ctx, fmt.Sprintf("/services/%v", service.Domain), string(doc))
+	ret, err := c.kv.Put(c.context(), fmt.Sprintf("/services/%v", service.Domain), string(doc))
 	if err != nil {
 		log.WithError(err).Errorf("Failed to store service object in etcd: %v", service.Domain)
 		return err
@@ -52,11 +51,16 @@ func (c *EtcdClient) SaveService(service *Service) error {
 }
 
 func (c *EtcdClient) DeleteService(name string) error {
-	if _, err := c.kv.Delete(c.ctx, fmt.Sprintf("/services/%v", name)); err != nil {
+	if _, err := c.kv.Delete(c.context(), fmt.Sprintf("/services/%v", name)); err != nil {
 		log.WithError(err).Errorf("Failed to delete service object from etcd: %v", name)
 		return err
 	}
 	return nil
+}
+
+func (c *EtcdClient) context() context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), etcdRequestTimeout)
+	return ctx
 }
 
 var etcdClient EtcdClient
@@ -72,5 +76,4 @@ func InitEtcdClient(config *Config) {
 		log.WithError(err).Fatal("Failed to connect to etcd")
 	}
 	etcdClient.kv = clientv3.NewKV(etcdClient.cli)
-	etcdClient.ctx, _ = context.WithTimeout(context.Background(), etcdRequestTimeout)
 }

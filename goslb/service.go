@@ -5,6 +5,9 @@ import (
 	"net"
 	"encoding/json"
 	"math/rand"
+	"strings"
+	"errors"
+	"fmt"
 )
 
 type Service struct {
@@ -68,6 +71,7 @@ func (s *Service) GetOrdered(clientIP net.IP) []net.IP {
 	return ret
 }
 
+
 type Endpoint struct {
 	IP              net.IP
 	Enabled         bool
@@ -76,6 +80,38 @@ type Endpoint struct {
 	Healthy         bool
 	monitorInstance MonitorType
 	lastCheck		time.Time
+}
+
+func (ep *Endpoint) setHealth(healthy bool, err error) {
+	if ep.Healthy != healthy || ep.lastCheck.IsZero() {
+		if healthy {
+			log.Infof("Endpoint %v healthy", ep.IP)
+		} else {
+			log.WithError(err).Warningf("Endpoint %v unhealthy", ep.IP)
+		}
+	}
+	ep.Healthy = healthy
+	ep.lastCheck = time.Now()
+}
+
+func (ep *Endpoint) startMonitor(m *Monitor) {
+	ep.stopMonitor()
+	switch strings.ToUpper(m.Type) {
+	case "TCP":
+		ep.monitorInstance = &TcpMonitor{monitor: m, endpoint: ep}
+	case "HTTP":
+		ep.monitorInstance = &HttpMonitor{monitor: m, endpoint: ep}
+	default:
+		return
+	}
+	go ep.monitorInstance.start()
+}
+
+func (ep *Endpoint) stopMonitor() {
+	if ep.monitorInstance != nil {
+		ep.monitorInstance.stop()
+		ep.monitorInstance = nil
+	}
 }
 
 type Monitor struct {
@@ -97,23 +133,71 @@ func (sd *ServiceDomain) Exists(s string) bool {
 	return found
 }
 
+func (sd *ServiceDomain) IsValid(s *Service) error {
+	// Validate service name "belongs to the service domain"
+	if !strings.HasSuffix(s.Domain, "."+sd.domain) {
+		return errors.New(fmt.Sprintf("Service '%v' does not belong to service domain '%v'", s.Domain, sd.domain))
+	}
+
+	// Validate and normalize monitor type
+	mt := strings.ToUpper(s.Monitor.Type)
+	if mt != "TCP" && mt != "HTTP" {
+		return errors.New(fmt.Sprintf("Monitor type '%v' of service '%v' is not supported", s.Monitor.Type, s.Domain))
+	}
+	s.Monitor.Type = mt
+
+	return nil
+}
+
 func (sd *ServiceDomain) Get(s string) *Service  {
 	return sd.services[s]
 }
 
 func (sd *ServiceDomain) Add(s *Service) error {
-	etcdClient.SaveService(s)
+	if err := etcdClient.SaveService(s); err != nil {
+		return err
+	}
+
+	// Add service to the domain and start health monitors
 	sd.services[s.Domain] = s
 	for i := range s.Endpoints {
-		s.Endpoints[i].monitorInstance = NewMonitorInstance(&s.Monitor, &s.Endpoints[i])
-		go s.Endpoints[i].monitorInstance.start()
+		s.Endpoints[i].startMonitor(&s.Monitor)
 	}
+	return nil
+}
+
+func (sd *ServiceDomain) Update(new *Service) error {
+	if err := etcdClient.SaveService(new); err != nil {
+		return err
+	}
+	current := sd.services[new.Domain]
+	oldEndpoints := current.Endpoints
+
+	// Carry over current health status and start monitors
+	for i := range new.Endpoints {
+		for j := range current.Endpoints {
+			if new.Endpoints[i].IP.Equal(current.Endpoints[j].IP) {
+				new.Endpoints[i].Healthy = current.Endpoints[j].Healthy
+			}
+		}
+		new.Endpoints[i].startMonitor(&new.Monitor)
+	}
+
+	// update objects
+	current.Monitor = new.Monitor
+	current.Endpoints = new.Endpoints
+
+	// stop old monitors
+	for i := range oldEndpoints {
+		oldEndpoints[i].stopMonitor()
+	}
+
 	return nil
 }
 
 func (sd *ServiceDomain) Delete(name string) error {
 	for _, ep := range sd.services[name].Endpoints {
-		ep.monitorInstance.stop()
+		ep.stopMonitor()
 	}
 	delete(sd.services, name)
 	return etcdClient.DeleteService(name)
@@ -131,7 +215,7 @@ func InitServiceDomain(domain string) error {
 	for _, svcstr := range services {
 		s := &Service{}
 		if err := json.Unmarshal(svcstr, &s); err != nil {
-			log.WithError(err).Error("Failed to unmarshall service loaded from etcd")
+			log.WithError(err).Error("Failed to unmarshal service loaded from etcd")
 			return err
 		}
 		serviceDomain.Add(s)
