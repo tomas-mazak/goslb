@@ -161,7 +161,9 @@ func (sd *ServiceDomain) Add(s *Service) error {
 	// Add service to the domain and start health monitors
 	sd.services[s.Domain] = s
 	for i := range s.Endpoints {
-		s.Endpoints[i].startMonitor(&s.Monitor)
+		if s.Endpoints[i].Enabled {
+			s.Endpoints[i].startMonitor(&s.Monitor)
+		}
 	}
 	return nil
 }
@@ -180,7 +182,9 @@ func (sd *ServiceDomain) Update(new *Service) error {
 				new.Endpoints[i].Healthy = current.Endpoints[j].Healthy
 			}
 		}
-		new.Endpoints[i].startMonitor(&new.Monitor)
+		if new.Endpoints[i].Enabled {
+			new.Endpoints[i].startMonitor(&new.Monitor)
+		}
 	}
 
 	// update objects
