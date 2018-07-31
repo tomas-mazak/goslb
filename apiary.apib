@@ -1,11 +1,14 @@
-FORMAT: 1A
-HOST: http://polls.apiblueprint.org/
-
 # GoSLB API
+
+GoSLB is multi-site DNS load-balancer with a RESTful API and etcd backend. The 
+basic configuration unit is a service (DNS domain) with a list of endpoints (IP 
+addresses) and a TCP or a HTTP health monitor. Each endpoint can be assigned to 
+a site (datacenter, cloud region, ...) and, based on provided site's IP ranges, 
+local-site endpoints are preferred in the DNS responses to clients.
 
 # Group Services API
 
-Lightweight load balancer
+Manage services' configuration
 
 ## Service collection [/services/]
 
@@ -161,8 +164,10 @@ by standard cli tools.
 
 ## Client Site [/_cat/clientsite]
 
+### Retrieve Client Site [GET]
+
 Returns what site the API cient belongs to (based on the client IP)
 
 + Response 200 (text/plain)
 
-        127.0.0.1: londonU
+        127.0.0.1: london
