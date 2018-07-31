@@ -31,7 +31,7 @@ func (api *ServiceAPI) get(w http.ResponseWriter, r *http.Request) {
 	if service, found := serviceDomain.services[name]; found {
 		json.NewEncoder(w).Encode(service)
 	} else {
-		http.Error(w, "", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 	}
 }
@@ -41,33 +41,33 @@ func (api *ServiceAPI) set(w http.ResponseWriter, r *http.Request) {
 
 	service := &Service{}
 	if err := json.NewDecoder(r.Body).Decode(&service); err != nil {
-		http.Error(w, "", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
 	if service.Domain != "" && service.Domain != name {
-		http.Error(w, "", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "URI and JSON names don't match"})
 		return
 	}
 	service.Domain = name
 
 	if err := serviceDomain.IsValid(service); err != nil {
-		http.Error(w, "", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
 	if !serviceDomain.Exists(service.Domain) {
 		if err := serviceDomain.Add(service); err != nil {
-			http.Error(w, "", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 			return
 		}
 	} else {
 		if err := serviceDomain.Update(service); err != nil {
-			http.Error(w, "", http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 			return
 		}
@@ -80,28 +80,30 @@ func (api *ServiceAPI) add(w http.ResponseWriter, r *http.Request) {
 	service := &Service{}
 
 	if err := json.NewDecoder(r.Body).Decode(&service); err != nil {
-		http.Error(w, "", http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "JSON parse error: " + err.Error()})
 		return
 	}
 
 	if serviceDomain.Exists(service.Domain) {
-		http.Error(w, "", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service already exists: " + service.Domain})
 		return
 	}
 	if err := serviceDomain.IsValid(service); err != nil {
-		http.Error(w, "", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
 	if err := serviceDomain.Add(service); err != nil {
-		http.Error(w, "", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
+	w.Header().Set("Location", "/services/" + service.Domain)
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(ApiStatus{Success: true})
 }
 
@@ -109,13 +111,13 @@ func (api *ServiceAPI) delete(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
 
 	if ! serviceDomain.Exists(name) {
-		http.Error(w, "", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
 
 	if err := serviceDomain.Delete(name); err != nil {
-		http.Error(w, "", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 	}
 
@@ -128,7 +130,7 @@ func (api *ServiceAPI) dnsResponse(w http.ResponseWriter, r *http.Request) {
 	ip := net.ParseIP(ipstr)
 
 	if ! serviceDomain.Exists(name) {
-		http.Error(w, "", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
@@ -136,15 +138,13 @@ func (api *ServiceAPI) dnsResponse(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(serviceDomain.Get(name).GetOrdered(ip))
 }
 
-type CatAPI struct {
-	routes string
-}
+type CatAPI struct {}
 
 func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := mux.Vars(r)["servicename"]
 
 	if ! serviceDomain.Exists(serviceName) {
-		http.Error(w, "", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("Service not found: %v\n", serviceName)))
 		return
 	}
