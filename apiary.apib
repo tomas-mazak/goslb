@@ -1,14 +1,43 @@
 # GoSLB API
 
-GoSLB is multi-site DNS load-balancer with a RESTful API and etcd backend. The 
-basic configuration unit is a service (DNS domain) with a list of endpoints (IP 
-addresses) and a TCP or a HTTP health monitor. Each endpoint can be assigned to 
-a site (datacenter, cloud region, ...) and, based on provided site's IP ranges, 
-local-site endpoints are preferred in the DNS responses to clients.
+GoSLB server has two REST API groups: Services API and Cat API. Services API is used
+to configure the services (DNS records). Cat API is a read-only API used for querying
+the current state in a CLI friendly format.
+
+# Service object fields
+
+  * **Domain** [string]: Fully qualified domain name of the service
+  * **Endpoints:** [Endpoint]: List of Endpoint objects
+  * **Monitor** [Monitor]: Health monitor configuration for the service endpoints
+
+  
+# Endpoint object fields
+
+  * **IP** [string]: Endpoint IP address
+  * **Enabled** [boolean]: If false, endpoint is disabled: not monitored and not returned in any DNS 
+                           replies
+  * **Priority** [number]: Endpoint's priority. From the enabled, healthy endpoints, only those with
+                           highest priority are returned
+  * **Site** [string]: Site the endpoint belongs to. Clients are assigned a site based on IP ranges on
+                       every request. Endpoints in client's local site are preferred over other sites.
+
+
+# Monitor object fields
+
+  * **Type** [string]: Either TCP or HTTP
+  * **Interval** [number]: Monitor execution interval in seconds
+  * **Timeout** [number]: Monitor execution timeout in seconds 
+  * **Port** [number]: TCP port to probe
+
+**HTTP monitor extra fields:**
+
+  * **URI** [string]: HTTP URI to fetch
+  * **SuccessCodes** [number]: List of HTTP status codes that are considered success
+    
 
 # Group Services API
 
-Manage services' configuration
+Manage services, endpoints and health monitors.
 
 ## Service collection [/services/]
 
@@ -22,10 +51,6 @@ Manage services' configuration
         ]
 
 ### Create a New Service [POST]
-
-Create a new service with specified domain, health monitor and list of endpoints.
-The service domain must be a sub-domain of configured service zone (`goslb.` by 
-default).
 
 + Request (application/json)
 
@@ -67,9 +92,7 @@ default).
 
 ## Service [/services/:service]
 
-### Retreive a Service [GET]
-
-Retrieve full configuration of a service
+### Retreive a Service configuration [GET]
 
 + Response 200 (application/json)
 
@@ -103,8 +126,6 @@ Retrieve full configuration of a service
 
 ### Update a Service [PUT]
 
-Update an existing service with new configuration
-
 + Request (application/json)
 
         {
@@ -136,9 +157,7 @@ Update an existing service with new configuration
         }
         
 ### Delete a Service [DELETE]
-
-Delete a service 
-
+ocs
 + Response 200 (application/json)
 
         {
