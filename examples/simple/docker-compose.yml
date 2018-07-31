@@ -1,0 +1,54 @@
+version: "3"
+
+services:
+  etcd:
+    container_name: goslb_etcd
+    image: quay.io/coreos/etcd:v3.2
+    ports:
+      - 2379
+    volumes:
+      - etcd:/etcd_data
+    command:
+      - /usr/local/bin/etcd
+      - -name
+      - etcd
+      - --data-dir
+      - /etcd_data
+      - -advertise-client-urls
+      - http://etcd:2379
+      - -listen-client-urls
+      - http://0.0.0.0:2379
+
+  goslb:
+    container_name: goslb_goslb
+    image: wigwam/goslb
+    ports:
+      - "8080:80"
+      - "8053:53/udp"
+    depends_on:
+      - etcd
+    command:
+      - /usr/bin/goslb
+      - --etcd-servers
+      - http://etcd:2379
+      - --log-level
+      - debug
+      - --bind-addr-api
+      - :80
+      - --bind-addr-dns
+      - :53
+
+  webserver1:
+    container_name: goslb_webserver1
+    image: wigwam/kubster
+    ports:
+      - "8080"
+
+  webserver2:
+    container_name: goslb_webserver2
+    image: wigwam/kubster
+    ports:
+      - "8080"
+
+volumes:
+  etcd:
