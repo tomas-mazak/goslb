@@ -1,7 +1,9 @@
 FORMAT: 1A
 HOST: http://polls.apiblueprint.org/
 
-# GoSLB
+# GoSLB API
+
+# Group Services API
 
 Lightweight load balancer
 
@@ -31,13 +33,13 @@ default).
                     "IP": "127.0.0.1", 
                     "Enabled": true,
                     "Priority": 0,
-                    "Site": "ie1"
+                    "Site": "london"
                 },
                 {
                     "IP": "172.31.1.31",
                     "Enabled": true,
                     "Priority": 0,
-                    "Site": "ie2"
+                    "Site": "prague"
                 }
             ],
             "Monitor": {
@@ -60,4 +62,107 @@ default).
                 "Success":true
             }
 
-# Service [/services]
+## Service [/services/:service]
+
+### Retreive a Service [GET]
+
+Retrieve full configuration of a service
+
++ Response 200 (application/json)
+
+        {
+            "Domain": "foo.goslb.",
+            "Endpoints": [
+                {
+                    "IP": "127.0.0.1",
+                    "Enabled": true,
+                    "Priority": 0,
+                    "Site": "london",
+                    "Healthy": true
+                },
+                {
+                    "IP": "172.31.1.31",
+                    "Enabled": true,
+                    "Priority": 0,
+                    "Site": "prague",
+                    "Healthy": true
+                }
+            ],
+            "Monitor": {
+                "Type": "TCP",
+                "Interval": 10,
+                "Timeout": 2,
+                "Port": 80,
+                "Uri": "",
+                "SuccessCodes": null
+            }
+        }
+
+### Update a Service [PUT]
+
+Update an existing service with new configuration
+
++ Request (application/json)
+
+        {
+            "Domain": "foo.goslb.",
+            "Endpoints": [
+                {
+                    "IP": "127.0.0.1",
+                    "Enabled": false,
+                    "Site": "london",
+                },
+                {
+                    "IP": "172.31.1.31",
+                    "Enabled": true,
+                    "Site": "prague",
+                }
+            ],
+            "Monitor": {
+                "Type": "TCP",
+                "Interval": 10,
+                "Timeout": 2,
+                "Port": 8080,
+            }
+        }
+
++ Response 200 (application/json)
+
+        {
+            "Success": true
+        }
+        
+### Delete a Service [DELETE]
+
+Delete a service 
+
++ Response 200 (application/json)
+
+        {
+            "Success": true
+        }
+
+
+# Group _cat API
+
+The cat API (thanks Elasticsearch for the idea) is a simple read-only API for 
+human interaction. It shows the information in text tabular format, parseable
+by standard cli tools.
+
+## Endpoints [/_cat/endpoints/:service]
+
+### Retrieve Endpoints' status [GET]
+
++ Response 200 (text/plain)
+
+        IP          Enabled Healthy Priority Site
+        127.0.0.1   true    false   0        london
+        172.31.1.31 true    false   0        prague
+
+## Client Site [/_cat/clientsite]
+
+Returns what site the API cient belongs to (based on the client IP)
+
++ Response 200 (text/plain)
+
+        127.0.0.1: londonU
