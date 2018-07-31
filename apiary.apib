@@ -90,7 +90,10 @@ Manage services, endpoints and health monitors.
                 "Success":true
             }
 
-## Service [/services/:service]
+## Service [/services/{service}]
+
++ Parameters
+    + service (required, string, `foo.goslb.`) ... Service fully-qualified domain name
 
 ### Retreive a Service configuration [GET]
 
@@ -171,7 +174,10 @@ The cat API (thanks Elasticsearch for the idea) is a simple read-only API for
 human interaction. It shows the information in text tabular format, parseable
 by standard cli tools.
 
-## Endpoints [/_cat/endpoints/:service]
+## Endpoints [/_cat/endpoints/{service}]
+
++ Parameters
+    + service (required, string, `foo.goslb.`) ... Service fully-qualified domain name
 
 ### Retrieve Endpoints' status [GET]
 
