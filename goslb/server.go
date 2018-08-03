@@ -1,21 +1,36 @@
 package goslb
 
+import "os"
+
+var serverStatus struct {
+	nodeName string
+	monitors int
+}
+
+
 func StartServer(config *Config) {
-		// setup logging
-		InitLogger(config)
+	// set the local node name
+	var err error
+	serverStatus.nodeName, err = os.Hostname()
+	if err != nil {
+		serverStatus.nodeName = "goslb"
+	}
 
-		// init Site Matcher
-		InitSiteMatcher(config)
+	// setup logging
+	InitLogger(config, serverStatus.nodeName)
 
-		// init the ETCD persistent store and load services
-		InitEtcdClient(config)
+	// init Site Matcher
+	InitSiteMatcher(config)
 
-		// init Service Domain
-		InitServiceDomain(config.Domain)
+	// init the ETCD persistent store and load services
+	InitEtcdClient(config)
 
-		// start API
-		go InitApiServer(config)
+	// init Service Domain
+	InitServiceDomain(config.Domain)
 
-		// start DNS server
-		DnsServer(config)
+	// start API
+	go InitApiServer(config)
+
+	// start DNS server
+	DnsServer(config)
 }

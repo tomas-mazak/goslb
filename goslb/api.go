@@ -9,6 +9,8 @@ import (
 	"net"
 	"github.com/gorilla/handlers"
 	"os"
+	"strings"
+	"sort"
 )
 
 type ApiStatus struct {
@@ -20,7 +22,7 @@ type ServiceAPI struct {}
 
 func (api *ServiceAPI) list(w http.ResponseWriter, r *http.Request) {
 	ret := make([]string, len(serviceDomain.services))[:0]
-	for k, _ := range serviceDomain.services {
+	for k := range serviceDomain.services {
 		ret = append(ret, k)
 	}
 	json.NewEncoder(w).Encode(ret)
@@ -140,6 +142,32 @@ func (api *ServiceAPI) dnsResponse(w http.ResponseWriter, r *http.Request) {
 
 type CatAPI struct {}
 
+func (api *CatAPI) getStatus(w http.ResponseWriter, r *http.Request) {
+	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tab, "Node\tServices\tActiveMonitors\n")
+	fmt.Fprintf(tab, "%v\t%v\t%v\n", serverStatus.nodeName, serviceDomain.Count(), serverStatus.monitors)
+	tab.Flush()
+}
+
+func (api *CatAPI) getServices(w http.ResponseWriter, r *http.Request) {
+	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tab, "Domain\tEndpoints\tHealthy\tList\n")
+	svcList := serviceDomain.List()
+	sort.Slice(svcList, func(i, j int) bool {
+		return svcList[i].Domain < svcList[j].Domain
+	})
+	for _, svc := range svcList {
+		var healthy []string
+		for _, ep := range svc.Endpoints {
+			if ep.Enabled && ep.Healthy {
+				healthy = append(healthy, fmt.Sprintf("%v (%v)", ep.IP, ep.Site))
+			}
+		}
+		fmt.Fprintf(tab, "%v\t%v\t%v\t%v\n", svc.Domain, len(svc.Endpoints), len(healthy), strings.Join(healthy, ", "))
+	}
+	tab.Flush()
+}
+
 func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := mux.Vars(r)["servicename"]
 
@@ -149,10 +177,14 @@ func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tab := tabwriter.NewWriter(w, 0, 0, 1, ' ', 0)
-	fmt.Fprint(tab, "IP\tEnabled\tHealthy\tPriority\tSite\n")
+	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tab, "IP\tEnabled\tHealthy\tPriority\tSite\tError\n")
 	for _, ep := range serviceDomain.Get(serviceName).Endpoints {
-		fmt.Fprintf(tab, "%v\t%v\t%v\t%v\t%v\n", ep.IP, ep.Enabled, ep.Healthy, ep.Priority, ep.Site)
+		var errStr string
+		if ep.lastError != nil {
+			errStr = ep.lastError.Error()
+		}
+		fmt.Fprintf(tab, "%v\t%v\t%v\t%v\t%v\t%v\n", ep.IP, ep.Enabled, ep.Healthy, ep.Priority, ep.Site, errStr)
 	}
 	tab.Flush()
 }
@@ -182,6 +214,8 @@ func InitApiServer(config *Config) {
 
 	catRouter := router.PathPrefix("/_cat").Subrouter()
 	catApi := &CatAPI{}
+	catRouter.HandleFunc("/status", catApi.getStatus).Methods("GET")
+	catRouter.HandleFunc("/services", catApi.getServices).Methods("GET")
 	catRouter.HandleFunc("/endpoints/{servicename}", catApi.getEndpoints).Methods("GET")
 	catRouter.HandleFunc("/clientsite", catApi.getClientSite).Methods("GET")
 

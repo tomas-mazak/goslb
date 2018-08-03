@@ -4,8 +4,8 @@ import (
 	"time"
 	"context"
 	"github.com/coreos/etcd/clientv3"
-	"fmt"
 	"encoding/json"
+	"strings"
 )
 
 var (
@@ -14,8 +14,18 @@ var (
 )
 
 type EtcdClient struct {
+	keyspace string
 	cli *clientv3.Client
 	kv clientv3.KV
+}
+
+func (c *EtcdClient) key(components... string) string {
+	return c.keyspace + "/" + strings.Join(components, "/")
+}
+
+func (c *EtcdClient) context() context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), etcdRequestTimeout)
+	return ctx
 }
 
 func (c *EtcdClient) Close() {
@@ -23,7 +33,7 @@ func (c *EtcdClient) Close() {
 }
 
 func (c *EtcdClient) ListServices() ([][]byte, error) {
-	gr, err := etcdClient.kv.Get(c.context(), "/services/", clientv3.WithPrefix())
+	gr, err := etcdClient.kv.Get(c.context(), c.key("services"), clientv3.WithPrefix())
 	if err != nil {
 		log.WithError(err).Error("Failed to list services in etcd")
 		return nil, err
@@ -41,7 +51,7 @@ func (c *EtcdClient) SaveService(service *Service) error {
 		log.WithError(err).Error("Failed to serialize service object", service.Domain)
 		return err
 	}
-	ret, err := c.kv.Put(c.context(), fmt.Sprintf("/services/%v", service.Domain), string(doc))
+	ret, err := c.kv.Put(c.context(), c.key("services", service.Domain), string(doc))
 	if err != nil {
 		log.WithError(err).Errorf("Failed to store service object in etcd: %v", service.Domain)
 		return err
@@ -51,16 +61,11 @@ func (c *EtcdClient) SaveService(service *Service) error {
 }
 
 func (c *EtcdClient) DeleteService(name string) error {
-	if _, err := c.kv.Delete(c.context(), fmt.Sprintf("/services/%v", name)); err != nil {
+	if _, err := c.kv.Delete(c.context(), c.key("services", name)); err != nil {
 		log.WithError(err).Errorf("Failed to delete service object from etcd: %v", name)
 		return err
 	}
 	return nil
-}
-
-func (c *EtcdClient) context() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), etcdRequestTimeout)
-	return ctx
 }
 
 var etcdClient EtcdClient

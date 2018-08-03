@@ -80,6 +80,7 @@ type Endpoint struct {
 	Healthy         bool
 	monitorInstance MonitorType
 	lastCheck		time.Time
+	lastError		error
 }
 
 func (ep *Endpoint) setHealth(healthy bool, err error) {
@@ -91,6 +92,7 @@ func (ep *Endpoint) setHealth(healthy bool, err error) {
 		}
 	}
 	ep.Healthy = healthy
+	ep.lastError = err
 	ep.lastCheck = time.Now()
 }
 
@@ -147,6 +149,18 @@ func (sd *ServiceDomain) IsValid(s *Service) error {
 	s.Monitor.Type = mt
 
 	return nil
+}
+
+func (sd *ServiceDomain) Count() int {
+	return len(sd.services)
+}
+
+func (sd *ServiceDomain) List() []*Service {
+	var s []*Service
+	for _, v := range sd.services {
+		s = append(s, v)
+	}
+	return s
 }
 
 func (sd *ServiceDomain) Get(s string) *Service  {
