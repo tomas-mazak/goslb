@@ -117,12 +117,14 @@ func (ep *Endpoint) stopMonitor() {
 }
 
 type Monitor struct {
-	Type         string
-	Interval     time.Duration
-	Timeout      time.Duration
-	Port         int
-	Uri          string
-	SuccessCodes []int
+	Type         string			// either TCP or HTTP
+	Interval     time.Duration  // monitor interval in seconds
+	Timeout      time.Duration  // request timeout in seconds
+	Port         int            // TCP port to be monitored
+	Uri          string         // (HTTP only) URI to get
+	SuccessCodes []int          // (HTTP only) HTTP codes indicating success
+	SSL 		 bool           // (HTTP only) SSL enabled (use HTTPS)
+	Head         bool           // (HTTP only) Use HEAD instead of GET method
 }
 
 type ServiceDomain struct {

@@ -1,30 +1,29 @@
 package goslb
 
 import (
-	"net"
-	"time"
-	"fmt"
-	"net/http"
 	"errors"
+	"fmt"
 	"math/rand"
+	"net"
+	"net/http"
+	"time"
+	"crypto/tls"
 )
-
 
 type MonitorType interface {
 	start()
 	stop()
 }
 
-
 type TcpMonitor struct {
-	monitor *Monitor
+	monitor  *Monitor
 	endpoint *Endpoint
-	stopped chan bool
+	stopped  chan bool
 }
 
 func (m *TcpMonitor) start() {
 	// random sleep up to monitor interval time: prevent bursts on startup
-	time.Sleep(time.Duration(rand.Intn(int(m.monitor.Interval) * 1000)) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(int(m.monitor.Interval)*1000)) * time.Millisecond)
 
 	m.stopped = make(chan bool, 1)
 	addrStr := fmt.Sprintf("%v:%v", m.endpoint.IP, m.monitor.Port)
@@ -32,7 +31,7 @@ func (m *TcpMonitor) start() {
 	log.Infof("Starting %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 	serverStatus.monitors++
 	for {
-		conn, err := net.DialTimeout("tcp", addrStr, m.monitor.Timeout * time.Second)
+		conn, err := net.DialTimeout("tcp", addrStr, m.monitor.Timeout*time.Second)
 		if err == nil {
 			m.endpoint.setHealth(true, nil)
 			conn.Close()
@@ -55,25 +54,43 @@ func (m *TcpMonitor) stop() {
 	serverStatus.monitors--
 }
 
-
 type HttpMonitor struct {
-	monitor *Monitor
+	monitor  *Monitor
 	endpoint *Endpoint
-	stopped chan bool
+	stopped  chan bool
 }
 
 func (m *HttpMonitor) start() {
 	// random sleep up to monitor interval time: prevent bursts on startup
-	time.Sleep(time.Duration(rand.Intn(int(m.monitor.Interval) * 1000)) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(int(m.monitor.Interval)*1000)) * time.Millisecond)
 
 	m.stopped = make(chan bool, 1)
-	client := &http.Client{Timeout: m.monitor.Timeout * time.Second}
-	url := fmt.Sprintf("http://%v:%v%v", m.endpoint.IP, m.monitor.Port, m.monitor.Uri)
+	tr := &http.Transport{
+		// We don't care about certs for health monitors
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
+	client := &http.Client{
+		Timeout: m.monitor.Timeout * time.Second,
+		Transport: tr,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+
+	scheme := "http"
+	if m.monitor.SSL {
+		scheme = "https"
+	}
+	url := fmt.Sprintf("%v://%v:%v%v", scheme, m.endpoint.IP, m.monitor.Port, m.monitor.Uri)
+
+	method := client.Get
+	if m.monitor.Head {
+		method = client.Head
+	}
 
 	log.Infof("Starting %v monitor for %v", m.monitor.Type, m.endpoint.IP)
 	serverStatus.monitors++
 	for {
-		resp, err := client.Get(url)
+		resp, err := method(url)
 		if err != nil {
 			m.endpoint.setHealth(false, err)
 		} else {
@@ -84,7 +101,7 @@ func (m *HttpMonitor) start() {
 					break
 				}
 			}
-			if ! success {
+			if !success {
 				err = errors.New(fmt.Sprintf("Invalid HTTP status code: %v", resp.StatusCode))
 			}
 			m.endpoint.setHealth(success, err)
@@ -104,4 +121,3 @@ func (m *HttpMonitor) stop() {
 	m.stopped <- true
 	serverStatus.monitors--
 }
-
