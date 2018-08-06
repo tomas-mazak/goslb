@@ -1,31 +1,44 @@
 package goslb
 
 import (
-	"github.com/yl2chen/cidranger"
 	"net"
+	"github.com/kentik/patricia/string_tree"
+	"github.com/kentik/patricia"
 )
 
-type SiteMatcher map[string]cidranger.Ranger
+type SiteMatcher struct {
+	trie *string_tree.TreeV4
+}
+
+func (sm *SiteMatcher) AddRecord(ip string, site string) error {
+	subnet, _, err := patricia.ParseIPFromString(ip)
+	if err != nil {
+		return err
+	}
+	sm.trie.Add(*subnet, site, func(a, b string) bool {
+		return a==b
+	})
+	return nil
+}
 
 func (sm *SiteMatcher) GetSite(ip net.IP) (string, bool) {
-	for site, ranger := range *sm {
-		if contains, _ := ranger.Contains(ip); contains {
-			return site, true
-		}
+	found, site, err := sm.trie.FindDeepestTag(patricia.NewIPv4AddressFromBytes(ip, net.IPv4len))
+	if err != nil {
+		log.WithError(err).Error("Cannot resolve site for %v", ip)
 	}
-	return "", false
+	return site, found
 }
 
 var siteMatcher SiteMatcher
 
 func InitSiteMatcher(config *Config) {
-	siteMatcher = make(SiteMatcher)
+	siteMatcher.trie = string_tree.NewTreeV4()
 	for k, v := range config.SiteMap {
-		siteMatcher[k] = cidranger.NewPCTrieRanger()
 		for _, ip := range v {
-			_, subnet, _ := net.ParseCIDR(ip)
-			siteMatcher[k].Insert(cidranger.NewBasicRangerEntry(*subnet))
-			log.Debugf("SiteMatcher: loaded site %v subnet %v", k, subnet)
+			if err := siteMatcher.AddRecord(ip, k); err != nil {
+				log.WithError(err).Fatal("Cannot load sites")
+			}
+			log.Debugf("SiteMatcher: loaded site %v subnet %v", k, ip)
 		}
 	}
 }
