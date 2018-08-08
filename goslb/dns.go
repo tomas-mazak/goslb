@@ -20,16 +20,9 @@ func handleGSLB(w dns.ResponseWriter, r *dns.Msg) {
 	log.Debugf("Received request from %v for %v", clientIP, r.Question[0].Name)
 	m := new(dns.Msg)
 	m.SetReply(r)
-	if serviceDomain.Exists(r.Question[0].Name) {
-		svc := serviceDomain.Get(r.Question[0].Name)
-		log.Debugf("%v: %v", svc.Domain, r.Question[0].Name)
-		for _, ip := range svc.GetOrdered(clientIP) {
-			rr := &dns.A{
-				Hdr: dns.RR_Header{Name: svc.Domain, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1},
-				A: ip,
-			}
-			m.Answer = append(m.Answer, rr)
-		}
+	if zone.DomainExists(r.Question[0].Name) {
+		record := zone.GetRecord(r.Question[0].Name)
+		m.Answer = record.DnsResponse(clientIP)
 	} else {
 		log.Debugf("Domain %v not found", r.Question[0].Name)
 		m.Rcode = dns.RcodeNameError

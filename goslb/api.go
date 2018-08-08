@@ -21,8 +21,8 @@ type ApiStatus struct {
 type ServiceAPI struct {}
 
 func (api *ServiceAPI) list(w http.ResponseWriter, r *http.Request) {
-	ret := make([]string, len(serviceDomain.services))[:0]
-	for k := range serviceDomain.services {
+	ret := make([]string, len(zone.records))[:0]
+	for k := range zone.records {
 		ret = append(ret, k)
 	}
 	json.NewEncoder(w).Encode(ret)
@@ -30,7 +30,7 @@ func (api *ServiceAPI) list(w http.ResponseWriter, r *http.Request) {
 
 func (api *ServiceAPI) get(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
-	if service, found := serviceDomain.services[name]; found {
+	if service, found := zone.records[name]; found {
 		json.NewEncoder(w).Encode(service)
 	} else {
 		w.WriteHeader(http.StatusNotFound)
@@ -55,20 +55,20 @@ func (api *ServiceAPI) set(w http.ResponseWriter, r *http.Request) {
 	}
 	service.Domain = name
 
-	if err := serviceDomain.IsValid(service); err != nil {
+	if err := zone.IsValid(service); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
-	if !serviceDomain.Exists(service.Domain) {
-		if err := serviceDomain.Add(service); err != nil {
+	if !zone.DomainExists(service.Domain) {
+		if err := zone.Add(service); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 			return
 		}
 	} else {
-		if err := serviceDomain.Update(service); err != nil {
+		if err := zone.Update(service); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 			return
@@ -87,24 +87,24 @@ func (api *ServiceAPI) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if serviceDomain.Exists(service.Domain) {
+	if zone.DomainExists(service.Domain) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service already exists: " + service.Domain})
 		return
 	}
-	if err := serviceDomain.IsValid(service); err != nil {
+	if err := zone.IsValid(service); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
-	if err := serviceDomain.Add(service); err != nil {
+	if err := zone.Add(service); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 		return
 	}
 
-	w.Header().Set("Location", "/services/" + service.Domain)
+	w.Header().Set("Location", "/records/" + service.Domain)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(ApiStatus{Success: true})
 }
@@ -112,13 +112,13 @@ func (api *ServiceAPI) add(w http.ResponseWriter, r *http.Request) {
 func (api *ServiceAPI) delete(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
 
-	if ! serviceDomain.Exists(name) {
+	if ! zone.DomainExists(name) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
 
-	if err := serviceDomain.Delete(name); err != nil {
+	if err := zone.Delete(name); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: err.Error()})
 	}
@@ -131,13 +131,13 @@ func (api *ServiceAPI) dnsResponse(w http.ResponseWriter, r *http.Request) {
 	ipstr, _, _ := net.SplitHostPort(r.RemoteAddr)
 	ip := net.ParseIP(ipstr)
 
-	if ! serviceDomain.Exists(name) {
+	if ! zone.DomainExists(name) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ApiStatus{Success: false, Msg: "Service not found: " + name})
 		return
 	}
 
-	json.NewEncoder(w).Encode(serviceDomain.Get(name).GetOrdered(ip))
+	json.NewEncoder(w).Encode(zone.GetRecord(name).GetResponseForClient(ip))
 }
 
 type CatAPI struct {}
@@ -145,21 +145,21 @@ type CatAPI struct {}
 func (api *CatAPI) getStatus(w http.ResponseWriter, r *http.Request) {
 	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tab, "Node\tServices\tActiveMonitors\n")
-	fmt.Fprintf(tab, "%v\t%v\t%v\n", serverStatus.nodeName, serviceDomain.Count(), serverStatus.monitors)
+	fmt.Fprintf(tab, "%v\t%v\t%v\n", serverStatus.nodeName, zone.Count(), serverStatus.monitors)
 	tab.Flush()
 }
 
 func (api *CatAPI) getServices(w http.ResponseWriter, r *http.Request) {
 	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tab, "Domain\tEndpoints\tHealthy\tList\n")
-	svcList := serviceDomain.List()
+	svcList := zone.List()
 	sort.Slice(svcList, func(i, j int) bool {
 		return svcList[i].Domain < svcList[j].Domain
 	})
 	for _, svc := range svcList {
 		var healthy []string
 		for _, ep := range svc.Endpoints {
-			if ep.Enabled && ep.Healthy {
+			if ep.Enabled && ep.healthy {
 				healthy = append(healthy, fmt.Sprintf("%v (%v)", ep.IP, ep.Site))
 			}
 		}
@@ -171,7 +171,7 @@ func (api *CatAPI) getServices(w http.ResponseWriter, r *http.Request) {
 func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 	serviceName := mux.Vars(r)["servicename"]
 
-	if ! serviceDomain.Exists(serviceName) {
+	if ! zone.DomainExists(serviceName) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("Service not found: %v\n", serviceName)))
 		return
@@ -179,12 +179,12 @@ func (api *CatAPI) getEndpoints(w http.ResponseWriter, r *http.Request) {
 
 	tab := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tab, "IP\tEnabled\tHealthy\tPriority\tSite\tError\n")
-	for _, ep := range serviceDomain.Get(serviceName).Endpoints {
+	for _, ep := range zone.GetRecord(serviceName).Endpoints {
 		var errStr string
 		if ep.lastError != nil {
 			errStr = ep.lastError.Error()
 		}
-		fmt.Fprintf(tab, "%v\t%v\t%v\t%v\t%v\t%v\n", ep.IP, ep.Enabled, ep.Healthy, ep.Priority, ep.Site, errStr)
+		fmt.Fprintf(tab, "%v\t%v\t%v\t%v\t%v\t%v\n", ep.IP, ep.Enabled, ep.healthy, ep.Priority, ep.Site, errStr)
 	}
 	tab.Flush()
 }
@@ -203,7 +203,7 @@ func InitApiServer(config *Config) {
     router := mux.NewRouter()
 	router.StrictSlash(true) // this actually means endpoints both with and without trailing slash will work
 
-    serviceRouter := router.PathPrefix("/services").Subrouter()
+    serviceRouter := router.PathPrefix("/records").Subrouter()
     serviceApi := &ServiceAPI{}
 	serviceRouter.HandleFunc("/", serviceApi.list).Methods("GET")
 	serviceRouter.HandleFunc("/", serviceApi.add).Methods("POST")
@@ -215,7 +215,7 @@ func InitApiServer(config *Config) {
 	catRouter := router.PathPrefix("/_cat").Subrouter()
 	catApi := &CatAPI{}
 	catRouter.HandleFunc("/status", catApi.getStatus).Methods("GET")
-	catRouter.HandleFunc("/services", catApi.getServices).Methods("GET")
+	catRouter.HandleFunc("/records", catApi.getServices).Methods("GET")
 	catRouter.HandleFunc("/endpoints/{servicename}", catApi.getEndpoints).Methods("GET")
 	catRouter.HandleFunc("/clientsite", catApi.getClientSite).Methods("GET")
 

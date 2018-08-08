@@ -33,9 +33,9 @@ func (c *EtcdClient) Close() {
 }
 
 func (c *EtcdClient) ListServices() ([][]byte, error) {
-	gr, err := etcdClient.kv.Get(c.context(), c.key("services"), clientv3.WithPrefix())
+	gr, err := etcdClient.kv.Get(c.context(), c.key("records"), clientv3.WithPrefix())
 	if err != nil {
-		log.WithError(err).Error("Failed to list services in etcd")
+		log.WithError(err).Error("Failed to list records in etcd")
 		return nil, err
 	}
 	ret := make([][]byte, len(gr.Kvs))
@@ -51,7 +51,7 @@ func (c *EtcdClient) SaveService(service *Service) error {
 		log.WithError(err).Error("Failed to serialize service object", service.Domain)
 		return err
 	}
-	ret, err := c.kv.Put(c.context(), c.key("services", service.Domain), string(doc))
+	ret, err := c.kv.Put(c.context(), c.key("records", service.Domain), string(doc))
 	if err != nil {
 		log.WithError(err).Errorf("Failed to store service object in etcd: %v", service.Domain)
 		return err
@@ -61,7 +61,7 @@ func (c *EtcdClient) SaveService(service *Service) error {
 }
 
 func (c *EtcdClient) DeleteService(name string) error {
-	if _, err := c.kv.Delete(c.context(), c.key("services", name)); err != nil {
+	if _, err := c.kv.Delete(c.context(), c.key("records", name)); err != nil {
 		log.WithError(err).Errorf("Failed to delete service object from etcd: %v", name)
 		return err
 	}

@@ -50,16 +50,16 @@ func TestGetOrdered(t *testing.T) {
 		ep  []goslb.Endpoint
 		res []net.IP
 	}{
-		{[]goslb.Endpoint{goslb.Endpoint{IP: ip("10.0.0.1"), Enabled: true, Healthy: true}}, ips("10.0.0.1")},
+		{[]goslb.Endpoint{goslb.Endpoint{IP: ip("10.0.0.1"), Enabled: true, healthy: true}}, ips("10.0.0.1")},
 	}
-	//e1 := goslb.Endpoint{IP: net.ParseIP("10.0.0.1"), Enabled: true, Healthy: true}
-	//e2 := Endpoint{IP: net.ParseIP("10.0.0.2"), Enabled: true, Healthy: true}
+	//e1 := goslb.Endpoint{IP: net.ParseIP("10.0.0.1"), Enabled: true, healthy: true}
+	//e2 := Endpoint{IP: net.ParseIP("10.0.0.2"), Enabled: true, healthy: true}
 	//s := goslb.Service{
 	//	Domain:    "foo.goslb.",
 	//	Endpoints: []goslb.Endpoint{e1},
 	//}
 	for _, tc := range good {
-		res := (&goslb.Service{Endpoints: tc.ep}).GetOrdered(ip("127.0.0.1"))
+		res := (&goslb.Service{Endpoints: tc.ep}).GetResponseForClient(ip("127.0.0.1"))
 		if !sortedCompare(res, tc.res) {
 			t.Errorf("For %v -- expected: %v; got: %v", tc.ep, tc.res, res)
 		}

@@ -22,11 +22,11 @@ func StartServer(config *Config) {
 	// init Site Matcher
 	InitSiteMatcher(config)
 
-	// init the ETCD persistent store and load services
+	// init the ETCD persistent store and load records
 	InitEtcdClient(config)
 
 	// init Service Domain
-	InitServiceDomain(config.Domain)
+	InitZone(config.Domain)
 
 	// start API
 	go InitApiServer(config)
